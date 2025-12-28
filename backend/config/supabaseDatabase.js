@@ -1,30 +1,29 @@
-const mysql = require('mysql2/promise');
+const { Pool } = require('pg');
 
-// Supabase MySQL connection configuration
+// Supabase PostgreSQL connection configuration
 const supabaseConfig = {
   host: process.env.SUPABASE_DB_HOST,
-  port: process.env.SUPABASE_DB_PORT || 3306,
+  port: process.env.SUPABASE_DB_PORT || 5432,
   user: process.env.SUPABASE_DB_USER,
   password: process.env.SUPABASE_DB_PASSWORD,
   database: process.env.SUPABASE_DB_NAME,
   ssl: {
     rejectUnauthorized: false
   },
-  connectionLimit: 10,
-  acquireTimeout: 60000,
-  timeout: 60000,
-  reconnect: true
+  max: 10,
+  idleTimeoutMillis: 30000,
+  connectionTimeoutMillis: 2000,
 };
 
 // Create connection pool
-const pool = mysql.createPool(supabaseConfig);
+const pool = new Pool(supabaseConfig);
 
 // Test connection
 const testConnection = async () => {
   try {
-    const connection = await pool.getConnection();
-    console.log('✅ Connected to Supabase MySQL database');
-    connection.release();
+    const client = await pool.connect();
+    console.log('✅ Connected to Supabase PostgreSQL database');
+    client.release();
     return true;
   } catch (error) {
     console.error('❌ Supabase database connection failed:', error.message);
@@ -35,4 +34,19 @@ const testConnection = async () => {
 // Initialize connection
 testConnection();
 
-module.exports = pool;
+// Wrapper to make it compatible with mysql2 syntax
+const db = {
+  execute: async (query, params = []) => {
+    const client = await pool.connect();
+    try {
+      const result = await client.query(query, params);
+      client.release();
+      return [result.rows, result.fields];
+    } catch (error) {
+      client.release();
+      throw error;
+    }
+  }
+};
+
+module.exports = db;

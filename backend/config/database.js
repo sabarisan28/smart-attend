@@ -3,40 +3,58 @@ require('dotenv').config();
 
 let db = null;
 
-// Check if we should use Supabase database
-const useSupabase = process.env.DATABASE_URL !== 'mock' && 
-  (process.env.SUPABASE_DB_HOST || process.env.DATABASE_URL?.startsWith('mysql://'));
+// Check if we should use Supabase API
+const useSupabaseAPI = process.env.DATABASE_URL !== 'mock' && 
+  (process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_ROLE_KEY);
 
-if (useSupabase) {
+// Check if we should use Supabase PostgreSQL direct connection
+const useSupabaseDB = process.env.DATABASE_URL !== 'mock' && 
+  (process.env.SUPABASE_DB_HOST || process.env.DATABASE_URL?.startsWith('postgresql://'));
+
+if (useSupabaseAPI) {
+  // Use Supabase JavaScript API (Recommended)
+  console.log('🚀 Connecting to Supabase via API...');
+  db = require('./supabaseClient');
+} else if (useSupabaseDB) {
   try {
-    // Use Supabase configuration if available
+    // Use Supabase PostgreSQL direct connection
     if (process.env.SUPABASE_DB_HOST) {
-      console.log('🗄️ Connecting to Supabase MySQL database...');
+      console.log('🗄️ Connecting to Supabase PostgreSQL database...');
       db = require('./supabaseDatabase');
-    } else if (process.env.DATABASE_URL?.startsWith('mysql://')) {
+    } else if (process.env.DATABASE_URL?.startsWith('postgresql://')) {
       // Fallback to connection string
-      const pool = mysql.createPool({
-        uri: process.env.DATABASE_URL,
-        waitForConnections: true,
-        connectionLimit: 10,
-        queueLimit: 0,
-        acquireTimeout: 60000,
-        timeout: 60000,
-        reconnect: true,
+      const { Pool } = require('pg');
+      
+      const pool = new Pool({
+        connectionString: process.env.DATABASE_URL,
         ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false
       });
 
       // Test database connection
       const testConnection = async () => {
         try {
-          const connection = await pool.getConnection();
-          console.log('✅ MySQL database connected successfully');
-          connection.release();
-          db = pool;
+          const client = await pool.connect();
+          console.log('✅ PostgreSQL database connected successfully');
+          client.release();
         } catch (error) {
           console.error('❌ Database connection failed:', error.message);
           console.log('🔄 Falling back to mock database for development');
           db = require('./mockDatabase');
+        }
+      };
+
+      // Wrapper to make it compatible with mysql2 syntax
+      db = {
+        execute: async (query, params = []) => {
+          const client = await pool.connect();
+          try {
+            const result = await client.query(query, params);
+            client.release();
+            return [result.rows, result.fields];
+          } catch (error) {
+            client.release();
+            throw error;
+          }
         }
       };
 
@@ -49,7 +67,8 @@ if (useSupabase) {
   }
 } else {
   console.log('📝 No real database configured - using mock database for development');
-  console.log('💡 To use Supabase database, update DATABASE_URL or set SUPABASE_DB_* variables in .env file');
+  console.log('💡 To use Supabase API, set SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY in .env file');
+  console.log('💡 To use Supabase DB, set SUPABASE_DB_* variables in .env file');
   console.log('🎯 Mock database includes enhanced user profiles');
   db = require('./mockDatabase');
 }

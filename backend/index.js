@@ -23,13 +23,17 @@ app.use((req, res, next) => {
 });
 
 // Routes
-app.use('/auth', authRoutes);
-app.use('/principal', principalRoutes);
-app.use('/faculty', facultyRoutes);
-app.use('/student', studentRoutes);
+app.use('/api/auth', authRoutes);
+app.use('/api/principal', principalRoutes);
+app.use('/api/faculty', facultyRoutes);
+app.use('/api/student', studentRoutes);
 
 // Health check
 app.get('/', (req, res) => {
+  res.json({ message: 'Smart Attendance System API is running!' });
+});
+
+app.get('/api', (req, res) => {
   res.json({ message: 'Smart Attendance System API is running!' });
 });
 
